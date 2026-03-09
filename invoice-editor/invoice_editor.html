@@ -405,6 +405,10 @@ let isDrawing     = false;
 let pdfDragStart  = null;   // { x, y } in PDF points
 let pdfLiveRect   = null;   // { x, y, w, h } in PDF points, shown while dragging
 
+// Text drag-to-place
+let isTextDragging = false;
+let textGhost      = null;  // preview element shown while dragging
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DOM refs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -606,30 +610,71 @@ document.querySelectorAll('[data-tool]').forEach(btn => {
 // ─────────────────────────────────────────────────────────────────────────────
 editCanvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
-  if (activeTool !== 'cover' && activeTool !== 'redact') return;
   const { x, y } = getCanvasXY(e);
+
+  if (activeTool === 'text') {
+    const fontSize   = parseInt(fontSizeEl.value, 10);
+    const color      = textColorEl.value;
+    const renderedSz = fontSize * renderScale;
+    textGhost = document.createElement('div');
+    textGhost.style.cssText = [
+      `position:absolute`,
+      `left:${x}px`,
+      `top:${y - renderedSz}px`,
+      `height:${renderedSz * 1.2}px`,
+      `min-width:90px`,
+      `font-size:${renderedSz}px`,
+      `font-family:'DM Sans',Helvetica,sans-serif`,
+      `color:${color}`,
+      `background:rgba(37,99,235,0.06)`,
+      `border:1.5px dashed rgba(37,99,235,0.7)`,
+      `border-radius:2px`,
+      `padding:0 3px`,
+      `z-index:20`,
+      `pointer-events:none`,
+      `box-sizing:border-box`,
+    ].join(';');
+    canvasContainer.appendChild(textGhost);
+    isTextDragging = true;
+    return;
+  }
+
+  if (activeTool !== 'cover' && activeTool !== 'redact') return;
   isDrawing    = true;
   pdfDragStart = canvasToPdf(x, y);
   pdfLiveRect  = { x: pdfDragStart.x, y: pdfDragStart.y, w: 0, h: 0 };
 });
 
-// Text and erase use click so the full mousedown→mouseup cycle finishes
-// before we create/focus the input — prevents immediate blur
 editCanvas.addEventListener('click', e => {
-  const { x, y } = getCanvasXY(e);
-  if (activeTool === 'text')  placeTextInput(x, y);
-  if (activeTool === 'erase') eraseAt(x, y);
+  if (activeTool === 'erase') { const { x, y } = getCanvasXY(e); eraseAt(x, y); }
 });
 
 editCanvas.addEventListener('mousemove', e => {
-  if (!isDrawing) return;
   const { x, y } = getCanvasXY(e);
-  const pdfEnd   = canvasToPdf(x, y);
-  pdfLiveRect    = normalizePdfRect(pdfDragStart, pdfEnd);
+
+  if (isTextDragging && textGhost) {
+    const renderedSz = parseInt(fontSizeEl.value, 10) * renderScale;
+    textGhost.style.left = `${x}px`;
+    textGhost.style.top  = `${y - renderedSz}px`;
+    return;
+  }
+
+  if (!isDrawing) return;
+  const pdfEnd = canvasToPdf(x, y);
+  pdfLiveRect  = normalizePdfRect(pdfDragStart, pdfEnd);
   renderOverlay();
 });
 
 editCanvas.addEventListener('mouseup', e => {
+  if (isTextDragging) {
+    if (textGhost && textGhost.parentNode) textGhost.parentNode.removeChild(textGhost);
+    textGhost      = null;
+    isTextDragging = false;
+    const { x, y } = getCanvasXY(e);
+    placeTextInput(x, y);
+    return;
+  }
+
   if (!isDrawing) return;
   const { x, y } = getCanvasXY(e);
   const pdfEnd   = canvasToPdf(x, y);
@@ -652,6 +697,11 @@ editCanvas.addEventListener('mouseup', e => {
 });
 
 editCanvas.addEventListener('mouseleave', () => {
+  if (isTextDragging) {
+    if (textGhost && textGhost.parentNode) textGhost.parentNode.removeChild(textGhost);
+    textGhost      = null;
+    isTextDragging = false;
+  }
   if (isDrawing) { isDrawing = false; pdfLiveRect = null; renderOverlay(); }
 });
 
