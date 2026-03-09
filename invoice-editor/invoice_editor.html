@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice Editor — Pella of Columbus</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --border: #e4e7ed;
+  --border2: #d1d5db;
+  --accent: #2563eb;
+  --accent-light: #eff4ff;
+  --accent-mid: #bfdbfe;
+  --text: #111827;
+  --text-2: #374151;
+  --text-3: #6b7280;
+  --text-4: #9ca3af;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── HEADER ── */
+.app-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow);
+}
+.back-link {
+  font-size: 13px;
+  color: var(--text-3);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  transition: all 0.12s;
+  flex-shrink: 0;
+}
+.back-link:hover { background: var(--bg); color: var(--text); }
+.header-sep { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
+.header-icon {
+  width: 34px; height: 34px;
+  background: var(--accent);
+  border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.header-icon svg { width: 18px; height: 18px; color: white; }
+.header-titles { display: flex; flex-direction: column; }
+.header-brand { font-size: 11px; color: var(--text-3); font-weight: 500; }
+.header-title { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -0.02em; line-height: 1.2; }
+
+/* ── UPLOAD SCREEN ── */
+#upload-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+.upload-card {
+  width: 100%; max-width: 460px;
+  background: var(--surface);
+  border: 2px dashed var(--border2);
+  border-radius: 16px;
+  padding: 52px 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.upload-card:hover, .upload-card.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+.upload-card input[type="file"] { display: none; }
+.upload-icon-wrap {
+  width: 60px; height: 60px;
+  background: var(--accent-light);
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 20px;
+}
+.upload-icon-wrap svg { width: 30px; height: 30px; color: var(--accent); }
+.upload-title { font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.upload-sub { font-size: 13px; color: var(--text-3); margin-bottom: 28px; line-height: 1.5; }
+.upload-btn-el {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--accent); color: white;
+  border: none; border-radius: 8px;
+  padding: 10px 22px;
+  font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; transition: opacity 0.12s;
+}
+.upload-btn-el:hover { opacity: 0.9; }
+
+/* ── EDITOR SCREEN ── */
+#editor-screen { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+
+/* ── TOOLBAR ── */
+.toolbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.tb-group { display: flex; align-items: center; gap: 5px; }
+.tb-sep { width: 1px; height: 26px; background: var(--border); flex-shrink: 0; margin: 0 2px; }
+.icon-btn {
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer; transition: all 0.12s;
+  flex-shrink: 0;
+}
+.icon-btn:hover { background: var(--bg); border-color: var(--border); }
+.icon-btn:disabled { opacity: 0.35; cursor: default; }
+.icon-btn svg { width: 15px; height: 15px; color: var(--text-2); }
+.page-label {
+  font-size: 12px; font-family: 'DM Mono', monospace;
+  color: var(--text-3); min-width: 60px; text-align: center;
+}
+.tool-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 11px;
+  font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif;
+  color: var(--text-2);
+  cursor: pointer; transition: all 0.12s;
+}
+.tool-btn svg { width: 13px; height: 13px; }
+.tool-btn:hover { background: var(--bg); color: var(--text); }
+.tool-btn.active {
+  background: var(--accent-light);
+  border-color: var(--accent-mid);
+  color: var(--accent);
+}
+.tb-label { font-size: 12px; color: var(--text-3); font-weight: 500; flex-shrink: 0; }
+.size-select {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 6px;
+  font-size: 12px; font-family: 'DM Mono', monospace;
+  color: var(--text-2); cursor: pointer; outline: none;
+}
+.color-swatch {
+  width: 26px; height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px; overflow: hidden; cursor: pointer;
+}
+.color-swatch input[type="color"] {
+  width: 120%; height: 120%; margin: -10%; border: none; padding: 0; cursor: pointer;
+}
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--accent); color: white;
+  border: none; border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 13px; font-weight: 600; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; transition: opacity 0.12s; margin-left: auto;
+  flex-shrink: 0;
+}
+.btn-primary:hover { opacity: 0.9; }
+.btn-primary:disabled { opacity: 0.5; cursor: default; }
+.btn-primary svg { width: 13px; height: 13px; }
+
+/* ── CANVAS AREA ── */
+.canvas-scroll {
+  flex: 1; overflow: auto;
+  display: flex; justify-content: center;
+  padding: 28px 24px;
+  background: #d1d5db;
+}
+#canvas-container {
+  position: relative;
+  display: inline-block;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.22);
+  border-radius: 2px;
+  line-height: 0;
+  flex-shrink: 0;
+}
+#pdf-canvas { display: block; }
+#edit-canvas { position: absolute; top: 0; left: 0; display: block; }
+
+/* ── STATUS BAR ── */
+.status-bar {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 6px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.status-hint { font-size: 11px; color: var(--text-4); font-family: 'DM Mono', monospace; }
+.status-right { font-size: 11px; color: var(--text-4); font-family: 'DM Mono', monospace; }
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: #111827; color: white;
+  padding: 9px 18px; border-radius: 8px;
+  font-size: 13px; font-weight: 500;
+  transition: transform 0.22s; z-index: 9999;
+  pointer-events: none;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<div class="app-header">
+  <a class="back-link" href="../index.html">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Tools
+  </a>
+  <div class="header-sep"></div>
+  <div class="header-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="16" y1="13" x2="8" y2="13"/>
+      <line x1="16" y1="17" x2="8" y2="17"/>
+      <line x1="10" y1="9" x2="8" y2="9"/>
+    </svg>
+  </div>
+  <div class="header-titles">
+    <span class="header-brand">Pella of Columbus</span>
+    <span class="header-title">Invoice Editor</span>
+  </div>
+</div>
+
+<!-- ── UPLOAD SCREEN ── -->
+<div id="upload-screen">
+  <label class="upload-card" id="upload-card" for="file-input">
+    <div class="upload-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+    </div>
+    <div class="upload-title">Upload Invoice PDF</div>
+    <div class="upload-sub">Drag &amp; drop your invoice here, or click to browse your files.</div>
+    <div class="upload-btn-el">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Choose PDF
+    </div>
+    <input type="file" id="file-input" accept=".pdf">
+  </label>
+</div>
+
+<!-- ── EDITOR SCREEN ── -->
+<div id="editor-screen">
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+
+    <!-- Page navigation -->
+    <div class="tb-group">
+      <button class="icon-btn" id="btn-prev" title="Previous page" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <span class="page-label" id="page-label">1 / 1</span>
+      <button class="icon-btn" id="btn-next" title="Next page" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- Tools -->
+    <div class="tb-group">
+      <button class="tool-btn active" data-tool="cover" id="tool-cover" title="Draw a white box to cover existing text">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+        Cover
+      </button>
+      <button class="tool-btn" data-tool="text" id="tool-text" title="Add a text overlay">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+        Text
+      </button>
+      <button class="tool-btn" data-tool="redact" id="tool-redact" title="Draw a black redaction box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor"/></svg>
+        Redact
+      </button>
+      <button class="tool-btn" data-tool="erase" id="tool-erase" title="Click an element to remove it">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        Erase
+      </button>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- Text options (only visible when text tool is active) -->
+    <div class="tb-group" id="text-options" style="display:none;">
+      <span class="tb-label">Size</span>
+      <select class="size-select" id="font-size">
+        <option value="7">7pt</option>
+        <option value="8">8pt</option>
+        <option value="9">9pt</option>
+        <option value="10" selected>10pt</option>
+        <option value="11">11pt</option>
+        <option value="12">12pt</option>
+        <option value="14">14pt</option>
+        <option value="16">16pt</option>
+      </select>
+      <span class="tb-label">Color</span>
+      <div class="color-swatch">
+        <input type="color" id="text-color" value="#000000">
+      </div>
+      <div class="tb-sep"></div>
+    </div>
+
+    <!-- Undo -->
+    <button class="icon-btn" id="btn-undo" title="Undo last edit (Ctrl+Z)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+    </button>
+
+    <!-- Load new PDF -->
+    <button class="icon-btn" id="btn-new" title="Load a different PDF">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+    </button>
+
+    <!-- Export -->
+    <button class="btn-primary" id="btn-export">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export PDF
+    </button>
+
+  </div>
+
+  <!-- Canvas -->
+  <div class="canvas-scroll" id="canvas-scroll">
+    <div id="canvas-container">
+      <canvas id="pdf-canvas"></canvas>
+      <canvas id="edit-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <span class="status-hint" id="status-hint">Select a tool and click/drag on the invoice to begin editing.</span>
+    <span class="status-right">Pella of Columbus · Internal Use Only</span>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// PDF.js worker
+// ─────────────────────────────────────────────────────────────────────────────
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+let pdfBytes      = null;   // original ArrayBuffer
+let pdfJsDoc      = null;   // PDF.js document
+let currentPage   = 1;
+let totalPages    = 0;
+let renderScale   = 1;      // pixels per PDF point for current page
+let pdfPageH      = 0;      // current page height in PDF points
+let activeTool    = 'cover';
+let edits         = {};     // { pageNum: [edit] } — coords in PDF points
+
+// Drawing
+let isDrawing     = false;
+let pdfDragStart  = null;   // { x, y } in PDF points
+let pdfLiveRect   = null;   // { x, y, w, h } in PDF points, shown while dragging
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOM refs
+// ─────────────────────────────────────────────────────────────────────────────
+const uploadScreen  = document.getElementById('upload-screen');
+const editorScreen  = document.getElementById('editor-screen');
+const fileInput     = document.getElementById('file-input');
+const uploadCard    = document.getElementById('upload-card');
+const pdfCanvas     = document.getElementById('pdf-canvas');
+const editCanvas    = document.getElementById('edit-canvas');
+const canvasContainer = document.getElementById('canvas-container');
+const pageLabel     = document.getElementById('page-label');
+const btnPrev       = document.getElementById('btn-prev');
+const btnNext       = document.getElementById('btn-next');
+const btnUndo       = document.getElementById('btn-undo');
+const btnExport     = document.getElementById('btn-export');
+const btnNew        = document.getElementById('btn-new');
+const fontSizeEl    = document.getElementById('font-size');
+const textColorEl   = document.getElementById('text-color');
+const textOptions   = document.getElementById('text-options');
+const statusHint    = document.getElementById('status-hint');
+const toastEl       = document.getElementById('toast');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+function pageEdits(p) {
+  if (!edits[p]) edits[p] = [];
+  return edits[p];
+}
+
+function showToast(msg, ms = 2600) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  setTimeout(() => toastEl.classList.remove('show'), ms);
+}
+
+function hexToRgb(hex) {
+  return PDFLib.rgb(
+    parseInt(hex.slice(1, 3), 16) / 255,
+    parseInt(hex.slice(3, 5), 16) / 255,
+    parseInt(hex.slice(5, 7), 16) / 255
+  );
+}
+
+// Convert canvas pixel → PDF point (PDF Y: 0 = bottom)
+function canvasToPdf(cx, cy) {
+  return { x: cx / renderScale, y: pdfPageH - cy / renderScale };
+}
+
+// Convert PDF point → canvas pixel
+function pdfToCanvas(px, py) {
+  return { x: px * renderScale, y: (pdfPageH - py) * renderScale };
+}
+
+function getCanvasXY(e) {
+  const r = editCanvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function normalizePdfRect(p1, p2) {
+  return {
+    x: Math.min(p1.x, p2.x),
+    y: Math.min(p1.y, p2.y),
+    w: Math.abs(p2.x - p1.x),
+    h: Math.abs(p2.y - p1.y),
+  };
+}
+
+function setHint(msg) { statusHint.textContent = msg; }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Load PDF
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadPdf(buffer) {
+  try {
+    pdfBytes    = buffer;
+    const bytes = new Uint8Array(buffer);
+    pdfJsDoc    = await pdfjsLib.getDocument({ data: bytes }).promise;
+    totalPages  = pdfJsDoc.numPages;
+    currentPage = 1;
+    edits       = {};
+
+    uploadScreen.style.display = 'none';
+    editorScreen.style.display = 'flex';
+
+    await renderPage(currentPage);
+    updateNav();
+    setHint('Select a tool and click/drag on the invoice to begin editing.');
+  } catch (err) {
+    console.error(err);
+    showToast('Could not open PDF. Please try a different file.');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Render a page with PDF.js
+// ─────────────────────────────────────────────────────────────────────────────
+async function renderPage(pageNum) {
+  const page       = await pdfJsDoc.getPage(pageNum);
+  const vp1        = page.getViewport({ scale: 1 });
+
+  // Fit to scroll area width
+  const scroll     = document.getElementById('canvas-scroll');
+  const maxW       = Math.max(scroll.clientWidth - 56, 400);
+  renderScale      = Math.min(maxW / vp1.width, 2.2);
+  pdfPageH         = vp1.height;
+
+  const vp         = page.getViewport({ scale: renderScale });
+  pdfCanvas.width  = vp.width;
+  pdfCanvas.height = vp.height;
+  editCanvas.width = vp.width;
+  editCanvas.height = vp.height;
+  editCanvas.style.cursor = toolCursor();
+
+  const ctx = pdfCanvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+  renderOverlay();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Render editing overlay
+// ─────────────────────────────────────────────────────────────────────────────
+function renderOverlay() {
+  const ctx = editCanvas.getContext('2d');
+  ctx.clearRect(0, 0, editCanvas.width, editCanvas.height);
+
+  for (const edit of pageEdits(currentPage)) drawEdit(ctx, edit);
+
+  // Live preview rect while dragging
+  if (isDrawing && pdfLiveRect && pdfLiveRect.w > 0 && pdfLiveRect.h > 0) {
+    const tl  = pdfToCanvas(pdfLiveRect.x, pdfLiveRect.y + pdfLiveRect.h);
+    const cw  = pdfLiveRect.w * renderScale;
+    const ch  = pdfLiveRect.h * renderScale;
+    const col = activeTool === 'redact' ? '#000000' : '#ffffff';
+    ctx.fillStyle = col;
+    ctx.fillRect(tl.x, tl.y, cw, ch);
+    if (activeTool === 'cover') {
+      ctx.strokeStyle = 'rgba(37,99,235,0.45)';
+      ctx.lineWidth   = 1;
+      ctx.strokeRect(tl.x, tl.y, cw, ch);
+    }
+  }
+}
+
+function drawEdit(ctx, edit) {
+  if (edit.type === 'rect') {
+    // edit.y is bottom-left Y in PDF coords
+    const tl = pdfToCanvas(edit.x, edit.y + edit.h);
+    const cw = edit.w * renderScale;
+    const ch = edit.h * renderScale;
+    ctx.fillStyle = edit.color;
+    ctx.fillRect(tl.x, tl.y, cw, ch);
+    if (edit.color === '#ffffff') {
+      ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+      ctx.lineWidth   = 1;
+      ctx.strokeRect(tl.x, tl.y, cw, ch);
+    }
+  } else if (edit.type === 'text') {
+    // edit.y is baseline Y in PDF coords
+    const cp = pdfToCanvas(edit.x, edit.y);
+    ctx.fillStyle = edit.color;
+    ctx.font      = `${edit.fontSize * renderScale}px 'DM Sans', Helvetica, sans-serif`;
+    ctx.fillText(edit.text, cp.x, cp.y);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tool selection
+// ─────────────────────────────────────────────────────────────────────────────
+function toolCursor() {
+  if (activeTool === 'erase') return 'pointer';
+  if (activeTool === 'text')  return 'text';
+  return 'crosshair';
+}
+
+const TOOL_HINTS = {
+  cover:  'Cover: click and drag to draw a white box over text you want to replace.',
+  text:   'Text: click anywhere on the invoice to place new text.',
+  redact: 'Redact: click and drag to draw a solid black box over sensitive information.',
+  erase:  'Erase: click any edit element to remove it.',
+};
+
+document.querySelectorAll('[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeTool = btn.dataset.tool;
+    document.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    editCanvas.style.cursor = toolCursor();
+    textOptions.style.display = activeTool === 'text' ? 'flex' : 'none';
+    setHint(TOOL_HINTS[activeTool]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mouse events
+// ─────────────────────────────────────────────────────────────────────────────
+editCanvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const { x, y } = getCanvasXY(e);
+  if (activeTool === 'cover' || activeTool === 'redact') {
+    isDrawing    = true;
+    pdfDragStart = canvasToPdf(x, y);
+    pdfLiveRect  = { x: pdfDragStart.x, y: pdfDragStart.y, w: 0, h: 0 };
+  } else if (activeTool === 'text') {
+    placeTextInput(x, y);
+  } else if (activeTool === 'erase') {
+    eraseAt(x, y);
+  }
+});
+
+editCanvas.addEventListener('mousemove', e => {
+  if (!isDrawing) return;
+  const { x, y } = getCanvasXY(e);
+  const pdfEnd   = canvasToPdf(x, y);
+  pdfLiveRect    = normalizePdfRect(pdfDragStart, pdfEnd);
+  renderOverlay();
+});
+
+editCanvas.addEventListener('mouseup', e => {
+  if (!isDrawing) return;
+  const { x, y } = getCanvasXY(e);
+  const pdfEnd   = canvasToPdf(x, y);
+  const rect     = normalizePdfRect(pdfDragStart, pdfEnd);
+  isDrawing      = false;
+  pdfLiveRect    = null;
+
+  // Minimum 3pt size to count as intentional
+  if (rect.w > 3 && rect.h > 3) {
+    pageEdits(currentPage).push({
+      type:  'rect',
+      x:     rect.x,
+      y:     rect.y,
+      w:     rect.w,
+      h:     rect.h,
+      color: activeTool === 'redact' ? '#000000' : '#ffffff',
+    });
+  }
+  renderOverlay();
+});
+
+editCanvas.addEventListener('mouseleave', () => {
+  if (isDrawing) { isDrawing = false; pdfLiveRect = null; renderOverlay(); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Text input placement
+// ─────────────────────────────────────────────────────────────────────────────
+function placeTextInput(cx, cy) {
+  const fontSize   = parseInt(fontSizeEl.value, 10);
+  const color      = textColorEl.value;
+  const pdfCoords  = canvasToPdf(cx, cy);        // baseline in PDF coords
+  const renderedSz = fontSize * renderScale;
+
+  const input      = document.createElement('input');
+  input.type       = 'text';
+  input.style.cssText = [
+    `position:absolute`,
+    `left:${cx}px`,
+    `top:${cy - renderedSz}px`,          // position so baseline ≈ cy
+    `font-size:${renderedSz}px`,
+    `font-family:'DM Sans',Helvetica,sans-serif`,
+    `color:${color}`,
+    `background:transparent`,
+    `border:1.5px dashed rgba(37,99,235,0.55)`,
+    `border-radius:2px`,
+    `outline:none`,
+    `padding:0 3px`,
+    `min-width:90px`,
+    `z-index:20`,
+    `line-height:1.1`,
+  ].join(';');
+
+  canvasContainer.appendChild(input);
+  input.focus();
+
+  let done = false;
+  function commit() {
+    if (done) return;
+    done = true;
+    const text = input.value.trim();
+    if (text) {
+      pageEdits(currentPage).push({
+        type:     'text',
+        x:        pdfCoords.x,
+        y:        pdfCoords.y,
+        text,
+        fontSize,
+        color,
+      });
+      renderOverlay();
+    }
+    if (input.parentNode) input.parentNode.removeChild(input);
+  }
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { done = true; if (input.parentNode) input.parentNode.removeChild(input); }
+  });
+  input.addEventListener('blur', commit);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Erase
+// ─────────────────────────────────────────────────────────────────────────────
+function eraseAt(cx, cy) {
+  const arr = pageEdits(currentPage);
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const edit = arr[i];
+    if (edit.type === 'rect') {
+      const tl = pdfToCanvas(edit.x, edit.y + edit.h);
+      const cw = edit.w * renderScale;
+      const ch = edit.h * renderScale;
+      if (cx >= tl.x && cx <= tl.x + cw && cy >= tl.y && cy <= tl.y + ch) {
+        arr.splice(i, 1); renderOverlay(); return;
+      }
+    } else if (edit.type === 'text') {
+      const cp     = pdfToCanvas(edit.x, edit.y);
+      const fSize  = edit.fontSize * renderScale;
+      const textW  = edit.text.length * fSize * 0.6; // approximate
+      if (cx >= cp.x && cx <= cp.x + textW && cy >= cp.y - fSize && cy <= cp.y + 4) {
+        arr.splice(i, 1); renderOverlay(); return;
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Undo
+// ─────────────────────────────────────────────────────────────────────────────
+function undo() {
+  const arr = pageEdits(currentPage);
+  if (arr.length > 0) { arr.pop(); renderOverlay(); }
+}
+
+btnUndo.addEventListener('click', undo);
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Page navigation
+// ─────────────────────────────────────────────────────────────────────────────
+function updateNav() {
+  pageLabel.textContent   = `${currentPage} / ${totalPages}`;
+  btnPrev.disabled        = currentPage <= 1;
+  btnNext.disabled        = currentPage >= totalPages;
+}
+
+btnPrev.addEventListener('click', async () => {
+  if (currentPage > 1) { currentPage--; await renderPage(currentPage); updateNav(); }
+});
+btnNext.addEventListener('click', async () => {
+  if (currentPage < totalPages) { currentPage++; await renderPage(currentPage); updateNav(); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export PDF
+// ─────────────────────────────────────────────────────────────────────────────
+btnExport.addEventListener('click', async () => {
+  if (!pdfBytes) return;
+  btnExport.disabled   = true;
+  btnExport.textContent = 'Exporting…';
+
+  try {
+    const pdfDoc    = await PDFLib.PDFDocument.load(pdfBytes);
+    const helvetica = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+    const pages     = pdfDoc.getPages();
+
+    for (const [pgStr, pgEdits] of Object.entries(edits)) {
+      const pgNum = parseInt(pgStr, 10);
+      const pg    = pages[pgNum - 1];
+      if (!pg) continue;
+      const pgH   = pg.getHeight();
+
+      for (const edit of pgEdits) {
+        if (edit.type === 'rect') {
+          // edit.y is bottom-left in PDF coords (origin bottom-left) — matches pdf-lib directly
+          pg.drawRectangle({
+            x:           edit.x,
+            y:           edit.y,
+            width:       edit.w,
+            height:      edit.h,
+            color:       hexToRgb(edit.color),
+            borderWidth: 0,
+          });
+        } else if (edit.type === 'text') {
+          // edit.y is baseline from bottom — matches pdf-lib directly
+          pg.drawText(edit.text, {
+            x:    edit.x,
+            y:    edit.y,
+            size: edit.fontSize,
+            font: helvetica,
+            color: hexToRgb(edit.color),
+          });
+        }
+      }
+    }
+
+    const outBytes = await pdfDoc.save();
+    const blob     = new Blob([outBytes], { type: 'application/pdf' });
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    a.href         = url;
+    a.download     = 'invoice-revised.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('PDF exported successfully!');
+  } catch (err) {
+    console.error(err);
+    showToast('Export failed — check the browser console for details.');
+  } finally {
+    btnExport.disabled = false;
+    btnExport.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export PDF`;
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// File upload & drag-drop
+// ─────────────────────────────────────────────────────────────────────────────
+fileInput.addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (file) { await loadPdf(await file.arrayBuffer()); fileInput.value = ''; }
+});
+
+uploadCard.addEventListener('dragover',  e => { e.preventDefault(); uploadCard.classList.add('drag-over'); });
+uploadCard.addEventListener('dragleave', ()  => uploadCard.classList.remove('drag-over'));
+uploadCard.addEventListener('drop', async e => {
+  e.preventDefault();
+  uploadCard.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') await loadPdf(await file.arrayBuffer());
+  else showToast('Please drop a PDF file.');
+});
+
+btnNew.addEventListener('click', () => {
+  const inp      = document.createElement('input');
+  inp.type       = 'file';
+  inp.accept     = '.pdf';
+  inp.onchange   = async e => {
+    const file = e.target.files[0];
+    if (file) await loadPdf(await file.arrayBuffer());
+  };
+  inp.click();
+});
+</script>
+</body>
+</html>
