@@ -308,6 +308,10 @@ body {
 
     <!-- Tools -->
     <div class="tb-group">
+      <button class="tool-btn" data-tool="select" id="tool-select" title="Select and drag placed elements">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-7 2-2 7-5-18z"/></svg>
+        Select
+      </button>
       <button class="tool-btn active" data-tool="cover" id="tool-cover" title="Draw a white box to cover existing text">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
         Cover
@@ -423,8 +427,15 @@ let pdfDragStart  = null;   // { x, y } in PDF points
 let pdfLiveRect   = null;   // { x, y, w, h } in PDF points, shown while dragging
 
 // Text drag-to-place
-let isTextDragging = false;
-let textGhost      = null;  // preview element shown while dragging
+let isTextDragging   = false;
+let textGhost        = null;  // preview element shown while dragging
+let textGhostCanvasY = 0;     // canvas Y of ghost for alignment guide
+
+// Select / move existing edits
+let selectedEditIndex = -1;   // index in pageEdits(currentPage), -1 = none
+let isDraggingEdit    = false;
+let dragEditOrigin    = null;  // { x, y } of edit in PDF coords at drag start
+let dragMouseOrigin   = null;  // PDF coords of mousedown
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DOM refs
@@ -557,7 +568,30 @@ function renderOverlay() {
   const ctx = editCanvas.getContext('2d');
   ctx.clearRect(0, 0, editCanvas.width, editCanvas.height);
 
-  for (const edit of pageEdits(currentPage)) drawEdit(ctx, edit);
+  const arr = pageEdits(currentPage);
+  for (let i = 0; i < arr.length; i++) drawEdit(ctx, arr[i], i === selectedEditIndex);
+
+  // Alignment guide during text placement drag
+  if (isTextDragging && textGhostCanvasY > 0) {
+    const threshold = 8; // canvas pixels
+    for (const edit of arr) {
+      if (edit.type === 'text') {
+        const cp = pdfToCanvas(edit.x, edit.y);
+        if (Math.abs(cp.y - textGhostCanvasY) < threshold) {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(37,99,235,0.75)';
+          ctx.lineWidth   = 1;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(0, cp.y);
+          ctx.lineTo(editCanvas.width, cp.y);
+          ctx.stroke();
+          ctx.restore();
+          break;
+        }
+      }
+    }
+  }
 
   // Live preview rect while dragging
   if (isDrawing && pdfLiveRect && pdfLiveRect.w > 0 && pdfLiveRect.h > 0) {
@@ -583,7 +617,9 @@ function renderOverlay() {
   }
 }
 
-function drawEdit(ctx, edit) {
+function drawEdit(ctx, edit, isSelected) {
+  let selBox = null;
+
   if (edit.type === 'highlight') {
     const tl = pdfToCanvas(edit.x, edit.y + edit.h);
     const cw = edit.w * renderScale;
@@ -593,6 +629,7 @@ function drawEdit(ctx, edit) {
     ctx.fillStyle   = edit.color;
     ctx.fillRect(tl.x, tl.y, cw, ch);
     ctx.restore();
+    if (isSelected) selBox = { x: tl.x, y: tl.y, w: cw, h: ch };
   } else if (edit.type === 'rect') {
     // edit.y is bottom-left Y in PDF coords
     const tl = pdfToCanvas(edit.x, edit.y + edit.h);
@@ -605,12 +642,27 @@ function drawEdit(ctx, edit) {
       ctx.lineWidth   = 1;
       ctx.strokeRect(tl.x, tl.y, cw, ch);
     }
+    if (isSelected) selBox = { x: tl.x, y: tl.y, w: cw, h: ch };
   } else if (edit.type === 'text') {
     // edit.y is baseline Y in PDF coords
-    const cp = pdfToCanvas(edit.x, edit.y);
+    const cp    = pdfToCanvas(edit.x, edit.y);
+    const fSize = edit.fontSize * renderScale;
     ctx.fillStyle = edit.color;
-    ctx.font      = `${edit.fontSize * renderScale}px 'DM Sans', Helvetica, sans-serif`;
+    ctx.font      = `${fSize}px 'DM Sans', Helvetica, sans-serif`;
     ctx.fillText(edit.text, cp.x, cp.y);
+    if (isSelected) {
+      const textW = edit.text.length * fSize * 0.6;
+      selBox = { x: cp.x - 2, y: cp.y - fSize - 2, w: textW + 4, h: fSize + 8 };
+    }
+  }
+
+  if (isSelected && selBox) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(37,99,235,0.9)';
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(selBox.x - 3, selBox.y - 3, selBox.w + 6, selBox.h + 6);
+    ctx.restore();
   }
 }
 
@@ -618,12 +670,14 @@ function drawEdit(ctx, edit) {
 // Tool selection
 // ─────────────────────────────────────────────────────────────────────────────
 function toolCursor() {
-  if (activeTool === 'erase') return 'pointer';
-  if (activeTool === 'text')  return 'text';
+  if (activeTool === 'erase')  return 'pointer';
+  if (activeTool === 'text')   return 'text';
+  if (activeTool === 'select') return 'default';
   return 'crosshair';
 }
 
 const TOOL_HINTS = {
+  select:    'Select: click any element to select it (blue outline), then drag to reposition. Press Delete to remove.',
   cover:     'Cover: click and drag to draw a white box over text you want to replace.',
   text:      'Text: click anywhere on the invoice to place new text.',
   redact:    'Redact: click and drag to draw a solid black box over sensitive information.',
@@ -634,12 +688,14 @@ const TOOL_HINTS = {
 document.querySelectorAll('[data-tool]').forEach(btn => {
   btn.addEventListener('click', () => {
     activeTool = btn.dataset.tool;
+    selectedEditIndex = -1;  // deselect when switching tools
     document.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     editCanvas.style.cursor = toolCursor();
     textOptions.style.display      = activeTool === 'text'      ? 'flex' : 'none';
     highlightOptions.style.display = activeTool === 'highlight' ? 'flex' : 'none';
     setHint(TOOL_HINTS[activeTool]);
+    renderOverlay();
   });
 });
 
@@ -649,6 +705,20 @@ document.querySelectorAll('[data-tool]').forEach(btn => {
 editCanvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
   const { x, y } = getCanvasXY(e);
+
+  if (activeTool === 'select') {
+    const idx = hitTestEdit(x, y);
+    selectedEditIndex = idx;
+    if (idx !== -1) {
+      const edit = pageEdits(currentPage)[idx];
+      isDraggingEdit  = true;
+      dragEditOrigin  = { x: edit.x, y: edit.y };
+      dragMouseOrigin = canvasToPdf(x, y);
+      editCanvas.style.cursor = 'grabbing';
+    }
+    renderOverlay();
+    return;
+  }
 
   if (activeTool === 'text') {
     const fontSize   = parseInt(fontSizeEl.value, 10);
@@ -690,10 +760,27 @@ editCanvas.addEventListener('click', e => {
 editCanvas.addEventListener('mousemove', e => {
   const { x, y } = getCanvasXY(e);
 
+  if (activeTool === 'select' && isDraggingEdit && selectedEditIndex !== -1) {
+    const pdfPos = canvasToPdf(x, y);
+    const edit   = pageEdits(currentPage)[selectedEditIndex];
+    edit.x = dragEditOrigin.x + (pdfPos.x - dragMouseOrigin.x);
+    edit.y = dragEditOrigin.y + (pdfPos.y - dragMouseOrigin.y);
+    renderOverlay();
+    return;
+  }
+
+  if (activeTool === 'select') {
+    const idx = hitTestEdit(x, y);
+    editCanvas.style.cursor = idx !== -1 ? 'grab' : 'default';
+    return;
+  }
+
   if (isTextDragging && textGhost) {
     const renderedSz = parseInt(fontSizeEl.value, 10) * renderScale;
     textGhost.style.left = `${x}px`;
     textGhost.style.top  = `${y - renderedSz}px`;
+    textGhostCanvasY = y;
+    renderOverlay();
     return;
   }
 
@@ -704,6 +791,15 @@ editCanvas.addEventListener('mousemove', e => {
 });
 
 editCanvas.addEventListener('mouseup', e => {
+  if (activeTool === 'select' && isDraggingEdit) {
+    isDraggingEdit  = false;
+    dragEditOrigin  = null;
+    dragMouseOrigin = null;
+    editCanvas.style.cursor = 'grab';
+    renderOverlay();
+    return;
+  }
+
   if (isTextDragging) {
     if (textGhost && textGhost.parentNode) textGhost.parentNode.removeChild(textGhost);
     textGhost      = null;
@@ -746,10 +842,16 @@ editCanvas.addEventListener('mouseup', e => {
 });
 
 editCanvas.addEventListener('mouseleave', () => {
+  if (activeTool === 'select' && isDraggingEdit) {
+    isDraggingEdit = false;
+    renderOverlay();
+  }
   if (isTextDragging) {
     if (textGhost && textGhost.parentNode) textGhost.parentNode.removeChild(textGhost);
-    textGhost      = null;
-    isTextDragging = false;
+    textGhost        = null;
+    isTextDragging   = false;
+    textGhostCanvasY = 0;
+    renderOverlay();
   }
   if (isDrawing) { isDrawing = false; pdfLiveRect = null; renderOverlay(); }
 });
@@ -812,27 +914,36 @@ function placeTextInput(cx, cy) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Erase
+// Hit testing — returns index of topmost edit at canvas (cx, cy), or -1
 // ─────────────────────────────────────────────────────────────────────────────
-function eraseAt(cx, cy) {
+function hitTestEdit(cx, cy) {
   const arr = pageEdits(currentPage);
   for (let i = arr.length - 1; i >= 0; i--) {
     const edit = arr[i];
-    if (edit.type === 'rect') {
+    if (edit.type === 'rect' || edit.type === 'highlight') {
       const tl = pdfToCanvas(edit.x, edit.y + edit.h);
       const cw = edit.w * renderScale;
       const ch = edit.h * renderScale;
-      if (cx >= tl.x && cx <= tl.x + cw && cy >= tl.y && cy <= tl.y + ch) {
-        arr.splice(i, 1); renderOverlay(); return;
-      }
+      if (cx >= tl.x && cx <= tl.x + cw && cy >= tl.y && cy <= tl.y + ch) return i;
     } else if (edit.type === 'text') {
-      const cp     = pdfToCanvas(edit.x, edit.y);
-      const fSize  = edit.fontSize * renderScale;
-      const textW  = edit.text.length * fSize * 0.6; // approximate
-      if (cx >= cp.x && cx <= cp.x + textW && cy >= cp.y - fSize && cy <= cp.y + 4) {
-        arr.splice(i, 1); renderOverlay(); return;
-      }
+      const cp    = pdfToCanvas(edit.x, edit.y);
+      const fSize = edit.fontSize * renderScale;
+      const textW = edit.text.length * fSize * 0.6;
+      if (cx >= cp.x - 4 && cx <= cp.x + textW + 4 && cy >= cp.y - fSize - 4 && cy <= cp.y + 6) return i;
     }
+  }
+  return -1;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Erase
+// ─────────────────────────────────────────────────────────────────────────────
+function eraseAt(cx, cy) {
+  const i = hitTestEdit(cx, cy);
+  if (i !== -1) {
+    pageEdits(currentPage).splice(i, 1);
+    if (selectedEditIndex === i) selectedEditIndex = -1;
+    renderOverlay();
   }
 }
 
@@ -847,6 +958,19 @@ function undo() {
 btnUndo.addEventListener('click', undo);
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    // Don't intercept while typing in an input field
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+    if (selectedEditIndex !== -1) {
+      e.preventDefault();
+      const arr = pageEdits(currentPage);
+      if (selectedEditIndex < arr.length) {
+        arr.splice(selectedEditIndex, 1);
+        selectedEditIndex = -1;
+        renderOverlay();
+      }
+    }
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
