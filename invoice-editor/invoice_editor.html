@@ -606,16 +606,19 @@ document.querySelectorAll('[data-tool]').forEach(btn => {
 // ─────────────────────────────────────────────────────────────────────────────
 editCanvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
+  if (activeTool !== 'cover' && activeTool !== 'redact') return;
   const { x, y } = getCanvasXY(e);
-  if (activeTool === 'cover' || activeTool === 'redact') {
-    isDrawing    = true;
-    pdfDragStart = canvasToPdf(x, y);
-    pdfLiveRect  = { x: pdfDragStart.x, y: pdfDragStart.y, w: 0, h: 0 };
-  } else if (activeTool === 'text') {
-    placeTextInput(x, y);
-  } else if (activeTool === 'erase') {
-    eraseAt(x, y);
-  }
+  isDrawing    = true;
+  pdfDragStart = canvasToPdf(x, y);
+  pdfLiveRect  = { x: pdfDragStart.x, y: pdfDragStart.y, w: 0, h: 0 };
+});
+
+// Text and erase use click so the full mousedown→mouseup cycle finishes
+// before we create/focus the input — prevents immediate blur
+editCanvas.addEventListener('click', e => {
+  const { x, y } = getCanvasXY(e);
+  if (activeTool === 'text')  placeTextInput(x, y);
+  if (activeTool === 'erase') eraseAt(x, y);
 });
 
 editCanvas.addEventListener('mousemove', e => {
