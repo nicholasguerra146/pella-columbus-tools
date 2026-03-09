@@ -25,11 +25,15 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+}
 body {
   font-family: 'DM Sans', sans-serif;
   background: var(--bg);
   color: var(--text);
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -119,7 +123,7 @@ body {
 .upload-btn-el:hover { opacity: 0.9; }
 
 /* ── EDITOR SCREEN ── */
-#editor-screen { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+#editor-screen { flex: 1; display: none; flex-direction: column; overflow: hidden; min-height: 0; }
 
 /* ── TOOLBAR ── */
 .toolbar {
@@ -316,6 +320,10 @@ body {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor"/></svg>
         Redact
       </button>
+      <button class="tool-btn" data-tool="highlight" id="tool-highlight" title="Draw a highlight over text">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4m0 0h18"/></svg>
+        Highlight
+      </button>
       <button class="tool-btn" data-tool="erase" id="tool-erase" title="Click an element to remove it">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
         Erase
@@ -340,6 +348,15 @@ body {
       <span class="tb-label">Color</span>
       <div class="color-swatch">
         <input type="color" id="text-color" value="#000000">
+      </div>
+      <div class="tb-sep"></div>
+    </div>
+
+    <!-- Highlight options (only visible when highlight tool is active) -->
+    <div class="tb-group" id="highlight-options" style="display:none;">
+      <span class="tb-label">Color</span>
+      <div class="color-swatch">
+        <input type="color" id="highlight-color" value="#ffeb3b">
       </div>
       <div class="tb-sep"></div>
     </div>
@@ -425,9 +442,11 @@ const btnNext       = document.getElementById('btn-next');
 const btnUndo       = document.getElementById('btn-undo');
 const btnExport     = document.getElementById('btn-export');
 const btnNew        = document.getElementById('btn-new');
-const fontSizeEl    = document.getElementById('font-size');
-const textColorEl   = document.getElementById('text-color');
-const textOptions   = document.getElementById('text-options');
+const fontSizeEl       = document.getElementById('font-size');
+const textColorEl      = document.getElementById('text-color');
+const textOptions      = document.getElementById('text-options');
+const highlightColorEl = document.getElementById('highlight-color');
+const highlightOptions = document.getElementById('highlight-options');
 const statusHint    = document.getElementById('status-hint');
 const toastEl       = document.getElementById('toast');
 
@@ -545,19 +564,36 @@ function renderOverlay() {
     const tl  = pdfToCanvas(pdfLiveRect.x, pdfLiveRect.y + pdfLiveRect.h);
     const cw  = pdfLiveRect.w * renderScale;
     const ch  = pdfLiveRect.h * renderScale;
-    const col = activeTool === 'redact' ? '#000000' : '#ffffff';
-    ctx.fillStyle = col;
-    ctx.fillRect(tl.x, tl.y, cw, ch);
-    if (activeTool === 'cover') {
-      ctx.strokeStyle = 'rgba(37,99,235,0.45)';
-      ctx.lineWidth   = 1;
-      ctx.strokeRect(tl.x, tl.y, cw, ch);
+    if (activeTool === 'highlight') {
+      ctx.save();
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle   = highlightColorEl.value;
+      ctx.fillRect(tl.x, tl.y, cw, ch);
+      ctx.restore();
+    } else {
+      const col = activeTool === 'redact' ? '#000000' : '#ffffff';
+      ctx.fillStyle = col;
+      ctx.fillRect(tl.x, tl.y, cw, ch);
+      if (activeTool === 'cover') {
+        ctx.strokeStyle = 'rgba(37,99,235,0.45)';
+        ctx.lineWidth   = 1;
+        ctx.strokeRect(tl.x, tl.y, cw, ch);
+      }
     }
   }
 }
 
 function drawEdit(ctx, edit) {
-  if (edit.type === 'rect') {
+  if (edit.type === 'highlight') {
+    const tl = pdfToCanvas(edit.x, edit.y + edit.h);
+    const cw = edit.w * renderScale;
+    const ch = edit.h * renderScale;
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle   = edit.color;
+    ctx.fillRect(tl.x, tl.y, cw, ch);
+    ctx.restore();
+  } else if (edit.type === 'rect') {
     // edit.y is bottom-left Y in PDF coords
     const tl = pdfToCanvas(edit.x, edit.y + edit.h);
     const cw = edit.w * renderScale;
@@ -588,10 +624,11 @@ function toolCursor() {
 }
 
 const TOOL_HINTS = {
-  cover:  'Cover: click and drag to draw a white box over text you want to replace.',
-  text:   'Text: click anywhere on the invoice to place new text.',
-  redact: 'Redact: click and drag to draw a solid black box over sensitive information.',
-  erase:  'Erase: click any edit element to remove it.',
+  cover:     'Cover: click and drag to draw a white box over text you want to replace.',
+  text:      'Text: click anywhere on the invoice to place new text.',
+  redact:    'Redact: click and drag to draw a solid black box over sensitive information.',
+  highlight: 'Highlight: click and drag to draw a color highlight over text.',
+  erase:     'Erase: click any edit element to remove it.',
 };
 
 document.querySelectorAll('[data-tool]').forEach(btn => {
@@ -600,7 +637,8 @@ document.querySelectorAll('[data-tool]').forEach(btn => {
     document.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     editCanvas.style.cursor = toolCursor();
-    textOptions.style.display = activeTool === 'text' ? 'flex' : 'none';
+    textOptions.style.display      = activeTool === 'text'      ? 'flex' : 'none';
+    highlightOptions.style.display = activeTool === 'highlight' ? 'flex' : 'none';
     setHint(TOOL_HINTS[activeTool]);
   });
 });
@@ -639,7 +677,7 @@ editCanvas.addEventListener('mousedown', e => {
     return;
   }
 
-  if (activeTool !== 'cover' && activeTool !== 'redact') return;
+  if (activeTool !== 'cover' && activeTool !== 'redact' && activeTool !== 'highlight') return;
   isDrawing    = true;
   pdfDragStart = canvasToPdf(x, y);
   pdfLiveRect  = { x: pdfDragStart.x, y: pdfDragStart.y, w: 0, h: 0 };
@@ -684,14 +722,25 @@ editCanvas.addEventListener('mouseup', e => {
 
   // Minimum 3pt size to count as intentional
   if (rect.w > 3 && rect.h > 3) {
-    pageEdits(currentPage).push({
-      type:  'rect',
-      x:     rect.x,
-      y:     rect.y,
-      w:     rect.w,
-      h:     rect.h,
-      color: activeTool === 'redact' ? '#000000' : '#ffffff',
-    });
+    if (activeTool === 'highlight') {
+      pageEdits(currentPage).push({
+        type:  'highlight',
+        x:     rect.x,
+        y:     rect.y,
+        w:     rect.w,
+        h:     rect.h,
+        color: highlightColorEl.value,
+      });
+    } else {
+      pageEdits(currentPage).push({
+        type:  'rect',
+        x:     rect.x,
+        y:     rect.y,
+        w:     rect.w,
+        h:     rect.h,
+        color: activeTool === 'redact' ? '#000000' : '#ffffff',
+      });
+    }
   }
   renderOverlay();
 });
@@ -836,7 +885,17 @@ btnExport.addEventListener('click', async () => {
       const pgH   = pg.getHeight();
 
       for (const edit of pgEdits) {
-        if (edit.type === 'rect') {
+        if (edit.type === 'highlight') {
+          pg.drawRectangle({
+            x:           edit.x,
+            y:           edit.y,
+            width:       edit.w,
+            height:      edit.h,
+            color:       hexToRgb(edit.color),
+            opacity:     0.4,
+            borderWidth: 0,
+          });
+        } else if (edit.type === 'rect') {
           // edit.y is bottom-left in PDF coords (origin bottom-left) — matches pdf-lib directly
           pg.drawRectangle({
             x:           edit.x,
